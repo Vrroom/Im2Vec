@@ -32,7 +32,6 @@ decorator==4.4.0
 defusedxml==0.6.0
 descartes==1.1.0
 diffcp==1.0.16
-diffvg==0.0.1
 dominate==2.5.1
 ecos==2.0.7.post1
 einops==0.3.0
