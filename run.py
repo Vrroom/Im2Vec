@@ -90,13 +90,13 @@ print(config['exp_params'], config['logging_params']['save_dir']+config['logging
 runner = Trainer(checkpoint_callback=checkpoint_callback,
                  resume_from_checkpoint=model_path,
                  logger=tt_logger,
-                 log_save_interval=100,
+                 # log_save_interval=100,
                  # gradient_clip_val=0.5,
                  # train_percent_check=1.,
                  # val_percent_check=1.,
                  # num_sanity_val_steps=1,
                  weights_summary='full',
-                 early_stop_callback = False,
+                 # early_stop_callback = False,
                  **config['trainer_params'])
 
 print(f"======= Training {config['model_params']['name']} =======")

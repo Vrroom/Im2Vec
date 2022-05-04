@@ -2,7 +2,6 @@ import itertools
 import math
 import os
 import random
-
 import torch
 from torch import optim
 from models import BaseVAE
@@ -19,19 +18,8 @@ import matplotlib.pyplot as plt
 import gc
 from PIL import Image
 import glob
+from Ranger import Ranger
 import torch_optimizer as optim_
-
-
-
-class ImageFileDataset(datasets.ImageFolder):
-    def __getitem__(self, index):
-        sample, target = super().__getitem__(index)
-        path, _ = self.samples[index]
-        dirs, filename = os.path.split(path)
-        _, class_name = os.path.split(dirs)
-        filename = os.path.join(class_name, filename)
-        return sample
-
 
 class MyDataset(Dataset):
     def __init__(self, image_paths, transform=None):
@@ -47,7 +35,6 @@ class MyDataset(Dataset):
 
     def __len__(self):
         return len(self.image_paths)
-
 
 class VAEXperiment(pl.LightningModule):
 
@@ -92,18 +79,6 @@ class VAEXperiment(pl.LightningModule):
             self.model.redo_features(path)
         return train_loss
 
-    # def validation_step(self, batch, batch_idx, optimizer_idx = 0):
-    #     return
-    #     real_img, labels = batch
-    #     self.curr_device = real_img.device
-    #
-    #     results = self.forward(real_img, labels = labels)
-    #     val_loss = self.model.loss_function(*results,
-    #                                         M_N = self.params['batch_size']/ self.num_val_imgs,
-    #                                         optimizer_idx = optimizer_idx,
-    #                                         batch_idx = batch_idx)
-    #
-    #     return val_loss
     def on_load_checkpoint(self, checkpoint):
         load_epoch = checkpoint['epoch']
         new_beta = self.model.beta * (self.beta_scale ** (load_epoch // 25))
@@ -125,18 +100,7 @@ class VAEXperiment(pl.LightningModule):
         gc.collect()
         torch.cuda.empty_cache()
         print('learning rate: ', self.trainer.optimizers[0].param_groups[0]["lr"])
-        return {'val_loss': avg_loss, 'log': tensorboard_logs}
-    #
-    # def on_after_backward(self):
-    #     # example to inspect gradient information in tensorboard
-    #     if self.trainer.global_step % 25 == 0:  # don't make the tf file huge
-    #         params = self.state_dict()
-    #         for k, v in params.items():
-    #             if k == 'model.point_predictor.11.weight':
-    #                 grads = v
-    #                 name = k
-    #                 self.logger.experiment.add_histogram(tag=name, values=grads,
-    #                                                      global_step=self.trainer.global_step)
+        self.log('val_loss', avg_loss)
 
     def sample_images(self):
         # Get sample reconstruction image
@@ -154,20 +118,6 @@ class VAEXperiment(pl.LightningModule):
                           f"real_img_{self.logger.name}_{self.current_epoch:04d}.png",
                           normalize=False,
                           nrow=12)
-
-        # try:
-        #     samples = self.model.sample(144,
-        #                                 self.curr_device,
-        #                                 labels = test_label)
-        #     vutils.save_image(samples.cpu().data,
-        #                       f"{self.logger.save_dir}{self.logger.name}/version_{self.logger.version}/"
-        #                       f"{self.logger.name}_{self.current_epoch:04d}.png",
-        #                       normalize=False,
-        #                       nrow=12)
-        # 
-        # except:
-        #     pass
-
 
         del test_input, recons #, samples
 
@@ -253,49 +203,22 @@ class VAEXperiment(pl.LightningModule):
         #     self.model.save(test_input, save_dir, name)
 
     def configure_optimizers(self):
-
         optims = []
         scheds = []
         if self.model.only_auxillary_training:
             print('Learning Rate changed for auxillary training')
             self.params['LR'] = 0.00001
-        optimizer = optim_.Ranger(self.model.parameters(),
+        optimizer = Ranger(self.model.parameters(),
                                    lr=self.params['LR'],
                                    weight_decay=self.params['weight_decay'])
         optims.append(optimizer)
-        # Check if more than 1 optimizer is required (Used for adversarial training)
-        try:
-            if self.params['LR_2'] is not None:
-                optimizer2 = optim_.AdamP(getattr(self.model,self.params['submodel']).parameters(),
-                                        lr=self.params['LR_2'])
-                optims.append(optimizer2)
-        except:
-            pass
-
-        # scheduler = optim.lr_scheduler.ExponentialLR(optims[0],
-        #                                              gamma = self.params['scheduler_gamma'], last_epoch=450)
         scheduler = optim.lr_scheduler.ReduceLROnPlateau(optims[0], 'min', verbose=True, factor=self.params['scheduler_gamma'], min_lr=0.0001, patience=int(self.model.memory_leak_epochs/7))
-        # scheduler = optim.lr_scheduler.CyclicLR(optims[0], self.params['LR']*0.1, self.params['LR'], mode='exp_range',
-        #                                              gamma = self.params['scheduler_gamma'])
-        # scheduler = optim.lr_scheduler.OneCycleLR(optims[0], max_lr=self.params['LR'], steps_per_epoch=130, epochs=2000)
-        # scheduler = GradualWarmupScheduler(optims[0], multiplier=1, total_epoch=20,
-        #                                           after_scheduler=scheduler)
-
         scheds.append({
          'scheduler': scheduler,
          'monitor': 'val_loss', # Default: val_loss
          'interval': 'epoch',
          'frequency': 1,
         },)
-
-        # Check if another scheduler is required for the second optimizer
-        try:
-            if self.params['scheduler_gamma_2'] is not None:
-                scheduler2 = optim.lr_scheduler.ExponentialLR(optims[1],
-                                                              gamma = self.params['scheduler_gamma_2'])
-                scheds.append(scheduler2)
-        except:
-            pass
         print('USING WARMUP SCHEDULER')
         return optims, scheds
 

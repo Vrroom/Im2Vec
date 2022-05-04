@@ -13,7 +13,8 @@ import numpy as np
 import kornia
 import torchvision
 import matplotlib.pyplot as plt
-dsample = kornia.transform.PyrDown()
+from kornia.geometry.transform import PyrDown
+dsample = PyrDown()
 
 # import os
 # import psutil
